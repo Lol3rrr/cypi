@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use base64::Engine;
 use tracing::Instrument;
 
 #[derive(Debug)]
@@ -6,12 +9,17 @@ pub enum CustomAuth {
     Developer,
 }
 
-impl<S> axum::extract::FromRequestParts<S> for CustomAuth {
+#[derive(Debug)]
+pub struct AuthState {
+    pub customers: HashMap<String, String>,
+}
+
+impl<S> axum::extract::FromRequestParts<S> for CustomAuth where S: AsRef<AuthState> + Sync {
     type Rejection = axum::response::Response;
 
     fn from_request_parts(
         parts: &mut axum::http::request::Parts,
-        _state: &S,
+        state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             tracing::trace!("Extractor");
@@ -54,14 +62,62 @@ impl<S> axum::extract::FromRequestParts<S> for CustomAuth {
                 }
             };
 
+            let auth_state: &AuthState = state.as_ref();
+            tracing::trace!(?auth_state, "Auth State");
+
             match kind {
                 "Basic" => {
                     tracing::trace!(?content, "Basic Auth");
 
+                    // TODO
                     // How do authenticate a Basic Auth user
 
+                    let raw_decoded = match base64::engine::general_purpose::STANDARD.decode(content) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::error!(?e, "Decoding Basic Auth Sequence");
+                            return Err(axum::response::Response::builder()
+                                .status(401)
+                                .body(axum::body::Body::empty())
+                                .unwrap());
+                        }
+                    };
+
+                    let decoded = match core::str::from_utf8(raw_decoded.as_slice()) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::error!(?e, "Encoding failure");
+                            return Err(axum::response::Response::builder()
+                                .status(401)
+                                .body(axum::body::Body::empty())
+                                .unwrap());
+                        }
+                    };
+
+                    let (username, password) = match decoded.split_once(':') {
+                        Some(v) => v,
+                        None => {
+                            tracing::error!("Malformed login credentials");
+                            return Err(axum::response::Response::builder()
+                                .status(401)
+                                .body(axum::body::Body::empty())
+                                .unwrap());
+                        }
+                    };
+
+                    match auth_state.customers.get(username) {
+                        Some(v) if v.as_str() == password => {}
+                        _ => {
+                            tracing::error!("Invalid login credentials");
+                            return Err(axum::response::Response::builder()
+                                .status(401)
+                                .body(axum::body::Body::empty())
+                                .unwrap());
+                        }
+                    };
+
                     Ok(CustomAuth::Customer {
-                        name: "TODO".into(),
+                        name: username.to_string(),
                     })
                 }
                 other => {

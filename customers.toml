@@ -2,7 +2,7 @@
 packages = ["numpy", "tensorflow"]
 
 [second]
-packages = ["two_package"]
+packages = ["numpy"]
 
 [third]
-packages = ["three_package"]
+packages = ["tensorflow"]

@@ -15,7 +15,12 @@ fn main() {
 
     let state = std::sync::Arc::new(tokio::sync::RwLock::new(State::new()));
 
-    let handle = rt.spawn(cypi::api::run_api(AxumState(state.clone())));
+    let handle = rt.spawn(cypi::api::run_api(AxumState {
+        state: state.clone(),
+        auth_state: std::sync::Arc::new(cypi::auth::AuthState {
+            customers: [("TODO".into(), "password".into()), ("second".into(), "password2".into()), ("third".into(), "password3".into())].into_iter().collect()
+        }),
+    }));
 
     let customer_handle = rt.spawn_blocking({
         let state = state.clone();

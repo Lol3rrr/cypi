@@ -52,4 +52,13 @@ impl State {
 }
 
 #[derive(Clone)]
-pub struct AxumState(pub std::sync::Arc<tokio::sync::RwLock<State>>);
+pub struct AxumState {
+    pub state: std::sync::Arc<tokio::sync::RwLock<State>>,
+    pub auth_state: std::sync::Arc<auth::AuthState>,
+}
+
+impl AsRef<auth::AuthState> for AxumState {
+    fn as_ref(&self) -> &auth::AuthState {
+        &self.auth_state
+    }
+}

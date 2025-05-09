@@ -67,7 +67,7 @@ async fn load_user_packages(
     tracing::trace!(?authed, "Loading Packages for User");
 
     let packages: Vec<String> = {
-        let state = state.0.read().await;
+        let state = state.state.read().await;
 
         let all_packages = state.packages.keys();
 
@@ -124,7 +124,7 @@ async fn package_files(
             .unwrap();
     }
 
-    let state = state.0.read().await;
+    let state = state.state.read().await;
 
     let files = match state.packages.get(&package) {
         Some(package) => {
@@ -172,7 +172,7 @@ async fn download_file(
             .unwrap();
     }
 
-    let state = state.0.read().await;
+    let state = state.state.read().await;
 
     let test = match state.packages.get(&package) {
         Some(v) => v,
