@@ -1,1 +1,8 @@
-[one_package]
+[index.pypi]
+url = "https://pypi.org/simple/"
+
+[package.numpy]
+index = "pypi"
+
+[package.tensorflow]
+index = "pypi"

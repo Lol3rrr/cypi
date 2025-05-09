@@ -19,12 +19,12 @@ fn main() {
 
     let customer_handle = rt.spawn_blocking({
         let state = state.clone();
-        move || cypi::customer_updates(state)
+        move || cypi::background::customers::customer_updates(state)
     });
 
     let packages_handle = rt.spawn_blocking({
         let state = state.clone();
-        move || cypi::package_updates(state)
+        move || cypi::background::packages::package_updates(state)
     });
 
     let _ = rt.block_on(handle);

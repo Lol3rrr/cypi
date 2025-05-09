@@ -1,5 +1,5 @@
 [TODO]
-packages = ["one_package"]
+packages = ["numpy", "tensorflow"]
 
 [second]
 packages = ["two_package"]
