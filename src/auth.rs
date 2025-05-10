@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use base64::Engine;
+use async_session::SessionStore;
+use axum::extract::FromRef;
+use axum_extra::headers::HeaderMapExt;
 use tracing::Instrument;
 
 #[derive(Debug)]
@@ -14,7 +16,11 @@ pub struct AuthState {
     pub customers: HashMap<String, String>,
 }
 
-impl<S> axum::extract::FromRequestParts<S> for CustomAuth where S: AsRef<AuthState> + Sync {
+impl<S> axum::extract::FromRequestParts<S> for CustomAuth
+where
+    S: AsRef<AuthState> + Sync,
+    async_session::MemoryStore: axum::extract::FromRef<S>,
+{
     type Rejection = axum::response::Response;
 
     fn from_request_parts(
@@ -26,108 +32,32 @@ impl<S> axum::extract::FromRequestParts<S> for CustomAuth where S: AsRef<AuthSta
 
             let header = &parts.headers;
 
-            let auth_header = match header.get("Authorization") {
-                Some(h) => h,
-                None => {
-                    return Err(axum::response::Response::builder()
-                        .status(401)
-                        .body(axum::body::Body::empty())
-                        .unwrap());
-                }
-            };
+            if let Some(h) = header.typed_get::<axum_extra::headers::Authorization<axum_extra::headers::authorization::Basic>>() {
+                let auth: &AuthState = state.as_ref();
 
-            tracing::trace!(?auth_header, "Has Authorization header");
-
-            let auth_str = match auth_header.to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!(?e, "Converting auth header to string");
-                    return Err(axum::response::Response::builder()
-                        .status(401)
-                        .body(axum::body::Body::empty())
-                        .unwrap());
-                }
-            };
-
-            tracing::trace!(?auth_str, "Has Auth String");
-
-            let (kind, content) = match auth_str.split_once(' ') {
-                Some(v) => v,
-                None => {
-                    tracing::error!(?auth_str, "Malformed Authorization Header");
-                    return Err(axum::response::Response::builder()
-                        .status(401)
-                        .body(axum::body::Body::empty())
-                        .unwrap());
-                }
-            };
-
-            let auth_state: &AuthState = state.as_ref();
-            tracing::trace!(?auth_state, "Auth State");
-
-            match kind {
-                "Basic" => {
-                    tracing::trace!(?content, "Basic Auth");
-
-                    // TODO
-                    // How do authenticate a Basic Auth user
-
-                    let raw_decoded = match base64::engine::general_purpose::STANDARD.decode(content) {
-                        Ok(d) => d,
-                        Err(e) => {
-                            tracing::error!(?e, "Decoding Basic Auth Sequence");
-                            return Err(axum::response::Response::builder()
-                                .status(401)
-                                .body(axum::body::Body::empty())
-                                .unwrap());
-                        }
-                    };
-
-                    let decoded = match core::str::from_utf8(raw_decoded.as_slice()) {
-                        Ok(d) => d,
-                        Err(e) => {
-                            tracing::error!(?e, "Encoding failure");
-                            return Err(axum::response::Response::builder()
-                                .status(401)
-                                .body(axum::body::Body::empty())
-                                .unwrap());
-                        }
-                    };
-
-                    let (username, password) = match decoded.split_once(':') {
-                        Some(v) => v,
-                        None => {
-                            tracing::error!("Malformed login credentials");
-                            return Err(axum::response::Response::builder()
-                                .status(401)
-                                .body(axum::body::Body::empty())
-                                .unwrap());
-                        }
-                    };
-
-                    match auth_state.customers.get(username) {
-                        Some(v) if v.as_str() == password => {}
-                        _ => {
-                            tracing::error!("Invalid login credentials");
-                            return Err(axum::response::Response::builder()
-                                .status(401)
-                                .body(axum::body::Body::empty())
-                                .unwrap());
-                        }
-                    };
-
-                    Ok(CustomAuth::Customer {
-                        name: username.to_string(),
-                    })
-                }
-                other => {
-                    tracing::error!(?other, "Unsupported Authorization Type");
-                    return Err(axum::response::Response::builder()
-                        .status(401)
-                        .body(axum::body::Body::empty())
-                        .unwrap());
+                if let Some(customer_password) = auth.customers.get(h.username()) {
+                    if customer_password == h.password() {
+                        return Ok(Self::Customer { name: h.username().to_string() });
+                    }
                 }
             }
+
+            if let Some(h) = header.typed_get::<axum_extra::headers::Cookie>() {
+                if let Some(session) = h.get("SESSION") {
+                    let store = async_session::MemoryStore::from_ref(state);
+
+                    let session = store.load_session(session.to_string()).await.unwrap();
+
+                    if let Some(_) = session {
+                        return Ok(Self::Developer);
+                    }
+                }
+            }
+
+            Err(axum::response::Response::builder()
+                .status(401)
+                .body(axum::body::Body::empty())
+                .unwrap())
         }
         .instrument(tracing::trace_span!("CustomAuth-Extractor"))
     }

@@ -1,6 +1,6 @@
 use tracing_subscriber::layer::SubscriberExt;
 
-use cypi::{AxumState, State};
+use cypi::{State, api::AxumState};
 
 fn main() {
     let registry = tracing_subscriber::Registry::default().with(tracing_subscriber::fmt::layer());
@@ -18,8 +18,16 @@ fn main() {
     let handle = rt.spawn(cypi::api::run_api(AxumState {
         state: state.clone(),
         auth_state: std::sync::Arc::new(cypi::auth::AuthState {
-            customers: [("TODO".into(), "password".into()), ("second".into(), "password2".into()), ("third".into(), "password3".into())].into_iter().collect()
+            customers: [
+                ("TODO".into(), "password".into()),
+                ("second".into(), "password2".into()),
+                ("third".into(), "password3".into()),
+            ]
+            .into_iter()
+            .collect(),
         }),
+        client: cypi::api::oauth_client().unwrap(),
+        session_store: async_session::MemoryStore::new(),
     }));
 
     let customer_handle = rt.spawn_blocking({

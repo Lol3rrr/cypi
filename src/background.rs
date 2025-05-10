@@ -1,2 +1,2 @@
-pub mod packages;
 pub mod customers;
+pub mod packages;

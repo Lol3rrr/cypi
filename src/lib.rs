@@ -24,7 +24,11 @@ pub struct Package {
 
 #[derive(Debug, Clone)]
 pub enum PackageFile {
-    RemotePackage { name: String, url: reqwest::Url, auth: RemotePackageAuth },
+    RemotePackage {
+        name: String,
+        url: reqwest::Url,
+        auth: RemotePackageAuth,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -48,17 +52,5 @@ impl State {
             packages: HashMap::new(),
             customer_packages: HashMap::new(),
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct AxumState {
-    pub state: std::sync::Arc<tokio::sync::RwLock<State>>,
-    pub auth_state: std::sync::Arc<auth::AuthState>,
-}
-
-impl AsRef<auth::AuthState> for AxumState {
-    fn as_ref(&self) -> &auth::AuthState {
-        &self.auth_state
     }
 }

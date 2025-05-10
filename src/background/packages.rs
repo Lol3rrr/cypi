@@ -80,8 +80,11 @@ fn load_package_index(
 
     tracing::trace!("Using Index {:?}", index);
 
-    let base_url = reqwest::Url::parse(&index.url).map_err(|e| LoadPackageIndexError::InvalidIndexUrl)?;
-    let target_url = base_url.join(&format!("{}/", pname)).map_err(|e| LoadPackageIndexError::JoiningUrls)?;
+    let base_url =
+        reqwest::Url::parse(&index.url).map_err(|e| LoadPackageIndexError::InvalidIndexUrl)?;
+    let target_url = base_url
+        .join(&format!("{}/", pname))
+        .map_err(|e| LoadPackageIndexError::JoiningUrls)?;
     tracing::trace!("Loading package files from '{}'", target_url);
 
     // TODO
@@ -89,7 +92,9 @@ fn load_package_index(
 
     let req_builder = http_client.get(target_url);
 
-    let mut response = req_builder.send().map_err(|e| LoadPackageIndexError::SendingRequest)?;
+    let mut response = req_builder
+        .send()
+        .map_err(|e| LoadPackageIndexError::SendingRequest)?;
 
     let parsing_opts = html5ever::ParseOpts {
         tree_builder: html5ever::tree_builder::TreeBuilderOpts {
