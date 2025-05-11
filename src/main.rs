@@ -15,7 +15,7 @@ fn main() {
 
     let state = std::sync::Arc::new(tokio::sync::RwLock::new(State::new()));
 
-    let handle = rt.spawn(cypi::api::run_api(AxumState {
+    let axum_state = AxumState {
         state: state.clone(),
         auth_state: std::sync::Arc::new(cypi::auth::AuthState {
             customers: [
@@ -28,7 +28,13 @@ fn main() {
         }),
         client: cypi::api::oauth_client().unwrap(),
         session_store: async_session::MemoryStore::new(),
-    }));
+    };
+    let handle = rt.spawn(async move {
+        let router = cypi::api::api_router(axum_state);
+
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:3030").await.unwrap();
+        axum::serve(listener, router).await.unwrap();
+    });
 
     let (customer_notifier, customer_recv) = cypi::background::notifier();
     let customer_handle = rt.spawn_blocking({

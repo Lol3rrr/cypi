@@ -11,6 +11,8 @@ pub fn notifier() -> (Notifier, NotificationReceiver) {
 }
 
 impl Notifier {
+    /// Will attempt to notify the corresponding [`NotificationReceiver`], if there is already a
+    /// pending notification, this will do nothing
     pub fn notify(&self) -> Result<(), ()> {
         match self.0.try_send(()) {
             Ok(_) => Ok(()),

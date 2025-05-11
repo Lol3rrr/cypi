@@ -23,3 +23,14 @@ impl PackageConfiguration {
         toml::from_str(&content).map_err(|e| ())
     }
 }
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CustomerConfig {
+    #[serde(flatten)]
+    pub customers: HashMap<String, ConfigCustomer>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ConfigCustomer {
+    pub packages: Vec<String>,
+}

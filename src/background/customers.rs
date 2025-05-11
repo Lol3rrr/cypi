@@ -1,4 +1,4 @@
-use crate::{CustomerConfig, State};
+use crate::{State, config};
 
 use super::NotificationReceiver;
 
@@ -26,7 +26,7 @@ pub fn customer_updates(
     }
 }
 
-fn load_customers(path: impl AsRef<std::path::Path>) -> CustomerConfig {
+fn load_customers(path: impl AsRef<std::path::Path>) -> config::CustomerConfig {
     let content = std::fs::read_to_string(path).unwrap();
     toml::from_str(content.as_str()).unwrap()
 }

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use html5ever::tendril::TendrilSink;
-use tracing_subscriber::fmt::format::FieldFn;
 
 use crate::{Package, PackageFile, PackageSrc, State, config};
 

@@ -5,29 +5,22 @@ pub mod auth;
 pub mod background;
 pub mod config;
 
-#[derive(Debug, serde::Deserialize)]
-pub struct CustomerConfig {
-    #[serde(flatten)]
-    pub customers: HashMap<String, ConfigCustomer>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct ConfigCustomer {
-    pub packages: Vec<String>,
-}
-
+/// A specific package
 #[derive(Debug, Clone)]
 pub struct Package {
     pub src: PackageSrc,
     pub files: Vec<PackageFile>,
 }
 
+/// A specific file for a package
 #[derive(Debug, Clone)]
 pub enum PackageFile {
+    /// A locally stored package file
     FilePackage {
         name: String,
         path: std::path::PathBuf,
     },
+    /// A remotely stored package file (potentially requiring auth)
     RemotePackage {
         name: String,
         url: reqwest::Url,
@@ -35,11 +28,13 @@ pub enum PackageFile {
     },
 }
 
+/// Auth for remotely stored packages
 #[derive(Debug, Clone)]
 pub enum RemotePackageAuth {
     Unauthorized,
 }
 
+/// The basic source for a package
 #[derive(Debug, Clone)]
 pub enum PackageSrc {
     Folder,

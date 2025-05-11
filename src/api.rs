@@ -1,3 +1,5 @@
+//! The API specifics
+
 use crate::auth::CustomAuth;
 
 type Oauth2Client = oauth2::basic::BasicClient<
@@ -14,6 +16,7 @@ mod index;
 static COOKIE_NAME: &str = "SESSION";
 static CSRF_TOKEN: &str = "csrf_token";
 
+/// Combines the different states needed for the API to work
 #[derive(Clone)]
 pub struct AxumState {
     pub state: std::sync::Arc<tokio::sync::RwLock<crate::State>>,
@@ -38,25 +41,18 @@ impl axum::extract::FromRef<AxumState> for async_session::MemoryStore {
     }
 }
 
+/// Setup the oauth client for Gitlab
 pub fn oauth_client() -> Result<Oauth2Client, ()> {
-    // Environment variables (* = required):
-    // *"CLIENT_ID"     "REPLACE_ME";
-    // *"CLIENT_SECRET" "REPLACE_ME";
-    //  "REDIRECT_URL"  "http://127.0.0.1:3000/auth/authorized";
-    //  "AUTH_URL"      "https://discord.com/api/oauth2/authorize?response_type=code";
-    //  "TOKEN_URL"     "https://discord.com/api/oauth2/token";
-
     let client_id = std::env::var("CLIENT_ID").map_err(|e| ())?;
     let client_secret = std::env::var("CLIENT_SECRET").map_err(|e| ())?;
     let redirect_url = std::env::var("REDIRECT_URL")
         .unwrap_or_else(|_| "http://localhost:3030/auth/authorized".to_string());
 
-    let auth_url = std::env::var("AUTH_URL").unwrap_or_else(|_| {
-        "https://gitlab.com/oauth/authorize?response_type=code".to_string()
-    });
+    let auth_url = std::env::var("AUTH_URL")
+        .unwrap_or_else(|_| "https://gitlab.com/oauth/authorize?response_type=code".to_string());
 
-    let token_url = std::env::var("TOKEN_URL")
-        .unwrap_or_else(|_| "https://gitlab.com/oauth/token".to_string());
+    let token_url =
+        std::env::var("TOKEN_URL").unwrap_or_else(|_| "https://gitlab.com/oauth/token".to_string());
 
     Ok(
         oauth2::basic::BasicClient::new(oauth2::ClientId::new(client_id))
@@ -67,23 +63,18 @@ pub fn oauth_client() -> Result<Oauth2Client, ()> {
     )
 }
 
-pub async fn run_api(state: AxumState) {
-    let app = axum::Router::new()
+/// Setup the entire Axum Router to handle the api
+pub fn api_router(state: AxumState) -> axum::Router {
+    axum::Router::new()
         .route("/", axum::routing::get(landing_page))
         .merge(auth::auth_router())
         .merge(index::index_router(state.clone()))
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3030").await.unwrap();
-
-    axum::serve(listener, app).await.unwrap();
+        .with_state(state)
 }
 
 async fn landing_page(
     auth: Result<CustomAuth, axum::response::Response>,
 ) -> axum::response::Response<String> {
-    tracing::debug!("Landing Page");
-
     let account = match auth {
         Ok(account) => account,
         Err(_) => {
@@ -98,7 +89,7 @@ async fn landing_page(
         }
     };
 
-    tracing::debug!(?account, "Already logged in");
+    tracing::debug!(?account, "Logged in");
 
     match account {
         CustomAuth::Customer { name } => {
