@@ -390,6 +390,7 @@ dependencies = [
  "reqwest",
  "serde",
  "tokio",
+ "tokio-util",
  "toml",
  "tracing",
  "tracing-subscriber",

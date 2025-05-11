@@ -1,13 +1,17 @@
 use std::collections::HashMap;
 
 use html5ever::tendril::TendrilSink;
+use tracing_subscriber::fmt::format::FieldFn;
 
 use crate::{Package, PackageFile, PackageSrc, State, config};
 
 use super::NotificationReceiver;
 
 #[tracing::instrument(skip(state, recv))]
-pub fn package_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>, mut recv: NotificationReceiver) {
+pub fn package_updates(
+    state: std::sync::Arc<tokio::sync::RwLock<State>>,
+    mut recv: NotificationReceiver,
+) {
     let http_client = reqwest::blocking::Client::new();
 
     loop {
@@ -32,6 +36,8 @@ pub fn package_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>, mut re
             tracing::trace!(?pname, "Handling package {:?}", package_config);
 
             if let Some(index_name) = &package_config.index {
+                tracing::trace!("Loading from Index");
+
                 match load_package_index(
                     &http_client,
                     &config.index,
@@ -40,14 +46,25 @@ pub fn package_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>, mut re
                     &package_config,
                 ) {
                     Ok(package) => {
-                        new_packages.insert(pname, package);
+                        new_packages.insert(pname.clone(), package);
                     }
                     Err(e) => {
                         tracing::error!(?e, "Loading Package from index");
                     }
                 };
+            }
 
-                continue;
+            if let Some(folder) = &package_config.folder {
+                tracing::trace!("Loading from folder");
+
+                match load_package_folder(&pname, folder) {
+                    Ok(package) => {
+                        new_packages.insert(pname.clone(), package);
+                    }
+                    Err(e) => {
+                        tracing::error!(?e, "Loading Package from folder");
+                    }
+                };
             }
         }
 
@@ -176,6 +193,67 @@ fn load_package_index(
 
     Ok(Package {
         src: PackageSrc::Index { url: base_url },
+        files,
+    })
+}
+
+#[tracing::instrument]
+fn load_package_folder(pname: &str, folder: &str) -> Result<Package, ()> {
+    let file_iter = std::fs::read_dir(folder).map_err(|e| ())?;
+
+    let mut files = Vec::new();
+
+    for entry in file_iter {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::error!(?e, "Getting entry in directory");
+                continue;
+            }
+        };
+
+        if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+            tracing::trace!(?entry, "Skipping non file entry");
+            continue;
+        }
+
+        let file_name = entry.file_name();
+        let file_name = match file_name.to_str() {
+            Some(f) => f,
+            None => {
+                tracing::warn!(file = ?entry.file_name(), "Ignoring non UTF-8 filename");
+                continue;
+            }
+        };
+
+        if !entry
+            .path()
+            .extension()
+            .map(|ext| ext == "whl")
+            .unwrap_or(false)
+        {
+            tracing::trace!(?file_name, "Ignoring file not ending with 'whl'");
+            continue;
+        }
+
+        let (package_name, _) = match file_name.split_once('-') {
+            Some(v) => v,
+            None => {
+                tracing::warn!(?file_name, "Ignoring malformed file name");
+                continue;
+            }
+        };
+
+        if package_name == pname {
+            files.push(PackageFile::FilePackage {
+                name: file_name.to_string(),
+                path: entry.path(),
+            });
+        }
+    }
+
+    Ok(Package {
+        src: PackageSrc::Folder,
         files,
     })
 }

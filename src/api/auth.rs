@@ -5,7 +5,7 @@ use super::{AxumState, COOKIE_NAME, CSRF_TOKEN, Oauth2Client};
 
 pub fn auth_router() -> axum::Router<AxumState> {
     axum::Router::new()
-        .route("/auth/discord", axum::routing::get(auth_discord))
+        .route("/auth/gitlab", axum::routing::get(auth_discord))
         .route("/auth/authorized", axum::routing::get(login_authorized))
 }
 
@@ -15,7 +15,7 @@ async fn auth_discord(
 ) -> impl axum::response::IntoResponse {
     let (auth_url, csrf_token) = client
         .authorize_url(oauth2::CsrfToken::new_random)
-        .add_scope(oauth2::Scope::new("identify".to_string()))
+        .add_scope(oauth2::Scope::new("read_user".to_string()))
         .url();
 
     let mut session = async_session::Session::new();
@@ -65,14 +65,11 @@ async fn csrf_token_validation_workflow(
     Ok(())
 }
 
-// The user data we'll get back from Discord.
-// https://discord.com/developers/docs/resources/user#user-object-user-structure
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct User {
-    id: String,
-    avatar: Option<String>,
+struct GitlabUser {
     username: String,
-    discriminator: String,
+    email: String,
+    name: String,
 }
 
 async fn login_authorized(
@@ -94,14 +91,13 @@ async fn login_authorized(
 
     // Fetch user data from discord
     let client = reqwest::Client::new();
-    let user_data: User = client
-        // https://discord.com/developers/docs/resources/user#get-current-user
-        .get("https://discordapp.com/api/users/@me")
+    let user_data: GitlabUser = client
+        .get("https://gitlab.com/api/v4/user")
         .bearer_auth(token.access_token().secret())
         .send()
         .await
         .unwrap()
-        .json::<User>()
+        .json::<GitlabUser>()
         .await
         .unwrap();
 

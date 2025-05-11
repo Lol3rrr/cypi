@@ -6,3 +6,6 @@ index = "pypi"
 
 [package.tensorflow]
 index = "pypi"
+
+[package.pandas]
+folder = "testing/"

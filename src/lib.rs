@@ -24,6 +24,10 @@ pub struct Package {
 
 #[derive(Debug, Clone)]
 pub enum PackageFile {
+    FilePackage {
+        name: String,
+        path: std::path::PathBuf,
+    },
     RemotePackage {
         name: String,
         url: reqwest::Url,
@@ -38,6 +42,7 @@ pub enum RemotePackageAuth {
 
 #[derive(Debug, Clone)]
 pub enum PackageSrc {
+    Folder,
     Index { url: reqwest::Url },
 }
 
