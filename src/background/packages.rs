@@ -4,18 +4,24 @@ use html5ever::tendril::TendrilSink;
 
 use crate::{Package, PackageFile, PackageSrc, State, config};
 
-#[tracing::instrument(skip(state))]
-pub fn package_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>) {
+use super::NotificationReceiver;
+
+#[tracing::instrument(skip(state, recv))]
+pub fn package_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>, mut recv: NotificationReceiver) {
     let http_client = reqwest::blocking::Client::new();
 
     loop {
+        if let Err(e) = recv.listen() {
+            tracing::error!("NotificationReceiver is broken");
+            return;
+        }
+
         tracing::trace!("Reloading package configuration");
 
         let config = match config::PackageConfiguration::load("./packages.toml") {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!(?e, "Loading Package Configuration");
-                std::thread::sleep(std::time::Duration::from_secs(15));
                 continue;
             }
         };
@@ -49,8 +55,6 @@ pub fn package_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>) {
             let mut state = state.blocking_write();
             state.packages = new_packages;
         }
-
-        std::thread::sleep(std::time::Duration::from_secs(15));
     }
 }
 

@@ -30,14 +30,36 @@ fn main() {
         session_store: async_session::MemoryStore::new(),
     }));
 
+    let (customer_notifier, customer_recv) = cypi::background::notifier();
     let customer_handle = rt.spawn_blocking({
         let state = state.clone();
-        move || cypi::background::customers::customer_updates(state)
+        move || cypi::background::customers::customer_updates(state, customer_recv)
+    });
+    rt.spawn(async move {
+        loop {
+            if let Err(e) = customer_notifier.notify() {
+                tracing::error!(?e, "Could not notify customer reload");
+                return;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        }
     });
 
+    let (package_notifier, package_recv) = cypi::background::notifier();
     let packages_handle = rt.spawn_blocking({
         let state = state.clone();
-        move || cypi::background::packages::package_updates(state)
+        move || cypi::background::packages::package_updates(state, package_recv)
+    });
+    rt.spawn(async move {
+        loop {
+            if let Err(e) = package_notifier.notify() {
+                tracing::error!(?e, "Could not notify package reload");
+                return;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        }
     });
 
     let _ = rt.block_on(handle);

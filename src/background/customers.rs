@@ -1,8 +1,15 @@
 use crate::{CustomerConfig, State};
 
-#[tracing::instrument(skip(state))]
-pub fn customer_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>) {
+use super::NotificationReceiver;
+
+#[tracing::instrument(skip(state, recv))]
+pub fn customer_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>, mut recv: NotificationReceiver) {
     loop {
+        if let Err(e) = recv.listen() {
+            tracing::error!("NotificationReceiver is broken");
+            return;
+        }
+
         tracing::trace!("Reloading Customer configuration");
 
         let customer_config = load_customers("./customers.toml");
@@ -13,8 +20,6 @@ pub fn customer_updates(state: std::sync::Arc<tokio::sync::RwLock<State>>) {
                 state.customer_packages.insert(cname, new_value);
             }
         }
-
-        std::thread::sleep(std::time::Duration::from_secs(15));
     }
 }
 
