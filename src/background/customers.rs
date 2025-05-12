@@ -15,7 +15,13 @@ pub fn customer_updates(
 
         tracing::trace!("Reloading Customer configuration");
 
-        let customer_config = load_customers("./customers.toml");
+        let customer_config = match load_customers("./customers.toml") {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(?e, "Loading Customer Config");
+                continue;
+            }
+        };
         {
             let mut state = state.blocking_write();
             for (cname, customer_entry) in customer_config.customers {
@@ -26,7 +32,7 @@ pub fn customer_updates(
     }
 }
 
-fn load_customers(path: impl AsRef<std::path::Path>) -> config::CustomerConfig {
-    let content = std::fs::read_to_string(path).unwrap();
-    toml::from_str(content.as_str()).unwrap()
+fn load_customers(path: impl AsRef<std::path::Path>) -> Result<config::CustomerConfig, ()> {
+    let content = std::fs::read_to_string(path).map_err(|e| ())?;
+    toml::from_str(content.as_str()).map_err(|e| ())
 }
