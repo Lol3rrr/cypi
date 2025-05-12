@@ -6,12 +6,14 @@ use crate::{Package, PackageFile, PackageSrc, State, config};
 
 use super::NotificationReceiver;
 
-#[tracing::instrument(skip(state, recv))]
+#[tracing::instrument(skip(state, recv, config_path))]
 pub fn package_updates(
     state: std::sync::Arc<tokio::sync::RwLock<State>>,
     mut recv: NotificationReceiver,
+    config_path: impl Into<std::path::PathBuf>
 ) {
     let http_client = reqwest::blocking::Client::new();
+    let config_path = config_path.into();
 
     loop {
         if let Err(e) = recv.listen() {
@@ -21,7 +23,7 @@ pub fn package_updates(
 
         tracing::trace!("Reloading package configuration");
 
-        let config = match config::PackageConfiguration::load("./packages.toml") {
+        let config = match config::PackageConfiguration::load(&config_path) {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!(?e, "Loading Package Configuration");

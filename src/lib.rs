@@ -5,6 +5,22 @@ pub mod auth;
 pub mod background;
 pub mod config;
 
+#[derive(Debug, clap::Parser)]
+pub struct CliArgs {
+    #[clap(long, default_value = "customers.toml")]
+    pub customer_config: std::path::PathBuf,
+    #[clap(long, default_value = "packages.toml")]
+    pub package_config: std::path::PathBuf,
+
+    /// The sqlite url to connect to 
+    ///
+    /// Examples
+    /// * `sqlite::memory:` stores the data only in-memory
+    /// * `sqlite://data.db` uses the data.db file (needs to exist before)
+    #[clap(long)]
+    pub sqlite_url: String,
+}
+
 /// A specific package
 #[derive(Debug, Clone)]
 pub struct Package {

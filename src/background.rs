@@ -1,5 +1,6 @@
 pub mod customers;
 pub mod packages;
+pub mod customer_auth;
 
 #[derive(Debug, Clone)]
 pub struct Notifier(std::sync::mpsc::SyncSender<()>);

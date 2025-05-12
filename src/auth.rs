@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use async_session::SessionStore;
-use axum::extract::FromRef;
+use tower_sessions::SessionStore;
+use axum::{extract::FromRef, response::sse};
 use axum_extra::headers::HeaderMapExt;
 use tracing::Instrument;
 
@@ -11,15 +11,23 @@ pub enum CustomAuth {
     Developer,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AuthState {
-    pub customers: HashMap<String, String>,
+    pub customers: std::sync::Arc<tokio::sync::RwLock<HashMap<String, String>>>,
+}
+
+impl AuthState {
+    pub fn new() -> Self {
+        Self {
+            customers: std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new()))
+        }
+    }
 }
 
 impl<S> axum::extract::FromRequestParts<S> for CustomAuth
 where
-    S: AsRef<AuthState> + Sync,
-    async_session::MemoryStore: axum::extract::FromRef<S>,
+    AuthState: axum::extract::FromRef<S>,
+    S: Sync + Send,
 {
     type Rejection = axum::response::Response;
 
@@ -33,24 +41,19 @@ where
             let header = &parts.headers;
 
             if let Some(h) = header.typed_get::<axum_extra::headers::Authorization<axum_extra::headers::authorization::Basic>>() {
-                let auth: &AuthState = state.as_ref();
+                let auth: AuthState = AuthState::from_ref(state);
+                let customers = auth.customers.read().await;
 
-                if let Some(customer_password) = auth.customers.get(h.username()) {
+                if let Some(customer_password) = customers.get(h.username()) {
                     if customer_password == h.password() {
                         return Ok(Self::Customer { name: h.username().to_string() });
                     }
                 }
             }
 
-            if let Some(h) = header.typed_get::<axum_extra::headers::Cookie>() {
-                if let Some(session) = h.get("SESSION") {
-                    let store = async_session::MemoryStore::from_ref(state);
-
-                    let session = store.load_session(session.to_string()).await.unwrap();
-
-                    if let Some(_) = session {
-                        return Ok(Self::Developer);
-                    }
+            if let Ok(session) = tower_sessions::Session::from_request_parts(parts, state).await {
+                if session.get::<String>("gitlab-username").await.map(|v| v.is_some()).unwrap_or(false) {
+                    return Ok(Self::Developer);
                 }
             }
 

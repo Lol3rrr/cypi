@@ -1,7 +1,6 @@
-use async_session::SessionStore;
 use oauth2::{CsrfToken, TokenResponse};
 
-use super::{AxumState, COOKIE_NAME, CSRF_TOKEN, Oauth2Client};
+use super::{AxumState,CSRF_TOKEN, Oauth2Client};
 
 pub fn auth_router() -> axum::Router<AxumState> {
     axum::Router::new()
@@ -11,23 +10,17 @@ pub fn auth_router() -> axum::Router<AxumState> {
 
 async fn auth_discord(
     axum::extract::State(client): axum::extract::State<Oauth2Client>,
-    axum::extract::State(store): axum::extract::State<async_session::MemoryStore>,
+    session: tower_sessions::Session,
 ) -> impl axum::response::IntoResponse {
     let (auth_url, csrf_token) = client
         .authorize_url(oauth2::CsrfToken::new_random)
         .add_scope(oauth2::Scope::new("read_user".to_string()))
         .url();
 
-    let mut session = async_session::Session::new();
-    session.insert(CSRF_TOKEN, &csrf_token).unwrap();
+    session.insert(CSRF_TOKEN, &csrf_token).await.unwrap();
+    session.save().await.unwrap();
 
-    let cookie = store.store_session(session).await.unwrap().unwrap();
-
-    let cookie = format!("{COOKIE_NAME}={cookie}; SameSite=Lax; HttpOnly; Secure; Path=/");
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
-
-    (headers, axum::response::Redirect::to(auth_url.as_ref()))
+    axum::response::Redirect::to(auth_url.as_ref())
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -39,23 +32,14 @@ struct AuthRequest {
 
 async fn csrf_token_validation_workflow(
     auth_request: &AuthRequest,
-    cookies: &axum_extra::headers::Cookie,
-    store: &async_session::MemoryStore,
+    session: &mut tower_sessions::Session,
 ) -> Result<(), ()> {
-    // Extract the cookie from the request
-    let cookie = cookies.get(COOKIE_NAME).ok_or(())?.to_string();
-
-    // Load the session
-    let session = match store.load_session(cookie).await.map_err(|e| ())? {
-        Some(session) => session,
-        None => return Err(()),
-    };
-
     // Extract the CSRF token from the session
-    let stored_csrf_token = session.get::<CsrfToken>(CSRF_TOKEN).ok_or(())?.to_owned();
+    let stored_csrf_token = session.get::<CsrfToken>(CSRF_TOKEN).await.map_err(|e| ())?.ok_or(())?.to_owned(); 
 
     // Cleanup the CSRF token session
-    store.destroy_session(session).await.map_err(|e| ())?;
+    session.remove::<CsrfToken>(CSRF_TOKEN).await.map_err(|e| ())?;
+    session.save().await.map_err(|e| ())?;
 
     // Validate CSRF token is the same as the one in the auth request
     if *stored_csrf_token.secret() != auth_request.state {
@@ -75,10 +59,9 @@ struct GitlabUser {
 async fn login_authorized(
     axum::extract::Query(query): axum::extract::Query<AuthRequest>,
     axum::extract::State(oauth_client): axum::extract::State<Oauth2Client>,
-    axum::extract::State(store): axum::extract::State<async_session::MemoryStore>,
-    axum_extra::TypedHeader(cookies): axum_extra::TypedHeader<axum_extra::headers::Cookie>,
+    mut session: tower_sessions::Session,
 ) -> impl axum::response::IntoResponse {
-    csrf_token_validation_workflow(&query, &cookies, &store)
+    csrf_token_validation_workflow(&query, &mut session)
         .await
         .unwrap();
 
@@ -102,18 +85,9 @@ async fn login_authorized(
         .unwrap();
 
     // Create a new session filled with user data
-    let mut session = async_session::Session::new();
-    session.insert("user", &user_data).unwrap();
+    session.insert("gitlab-username", user_data.username).await.unwrap();
+    session.save().await.unwrap();
 
     // Store session and get corresponding cookie
-    let cookie = store.store_session(session).await.unwrap().unwrap();
-
-    // Build the cookie
-    let cookie = format!("{COOKIE_NAME}={cookie}; SameSite=Lax; HttpOnly; Secure; Path=/");
-
-    // Set cookie
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
-
-    (headers, axum::response::Redirect::to("/"))
+    axum::response::Redirect::to("/")
 }

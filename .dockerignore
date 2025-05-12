@@ -1,2 +1,4 @@
 target/
 k6/
+data.db
+.git/

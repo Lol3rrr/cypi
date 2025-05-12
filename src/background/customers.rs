@@ -2,11 +2,14 @@ use crate::{State, config};
 
 use super::NotificationReceiver;
 
-#[tracing::instrument(skip(state, recv))]
+#[tracing::instrument(skip(state, recv, config_path))]
 pub fn customer_updates(
     state: std::sync::Arc<tokio::sync::RwLock<State>>,
     mut recv: NotificationReceiver,
+    config_path: impl Into<std::path::PathBuf>
 ) {
+    let config_path = config_path.into();
+
     loop {
         if let Err(e) = recv.listen() {
             tracing::error!("NotificationReceiver is broken");
@@ -15,7 +18,7 @@ pub fn customer_updates(
 
         tracing::trace!("Reloading Customer configuration");
 
-        let customer_config = match load_customers("./customers.toml") {
+        let customer_config = match load_customers(&config_path) {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!(?e, "Loading Customer Config");

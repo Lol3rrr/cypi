@@ -20,31 +20,35 @@ static CSRF_TOKEN: &str = "csrf_token";
 #[derive(Clone)]
 pub struct AxumState {
     pub state: std::sync::Arc<tokio::sync::RwLock<crate::State>>,
-    pub auth_state: std::sync::Arc<crate::auth::AuthState>,
+    pub auth_state: crate::auth::AuthState,
     pub client: Oauth2Client,
-    pub session_store: async_session::MemoryStore,
 }
 
-impl AsRef<crate::auth::AuthState> for AxumState {
-    fn as_ref(&self) -> &crate::auth::AuthState {
-        &self.auth_state
+impl axum::extract::FromRef<AxumState> for crate::auth::AuthState {
+    fn from_ref(input: &AxumState) -> Self {
+        input.auth_state.clone()
     }
 }
+
 impl axum::extract::FromRef<AxumState> for Oauth2Client {
     fn from_ref(input: &AxumState) -> Self {
         input.client.clone()
     }
 }
-impl axum::extract::FromRef<AxumState> for async_session::MemoryStore {
-    fn from_ref(input: &AxumState) -> Self {
-        input.session_store.clone()
-    }
+
+#[derive(Debug)]
+pub enum GitlabOauthClientError {
+    MissingClientId,
+    MissingClientSecret,
+    SetAuthUri,
+    SetTokenUri,
+    SetRedirectUri,
 }
 
 /// Setup the oauth client for Gitlab
-pub fn oauth_client() -> Result<Oauth2Client, ()> {
-    let client_id = std::env::var("CLIENT_ID").map_err(|e| ())?;
-    let client_secret = std::env::var("CLIENT_SECRET").map_err(|e| ())?;
+pub fn gitlab_oauth_client() -> Result<Oauth2Client, GitlabOauthClientError> {
+    let client_id = std::env::var("CLIENT_ID").map_err(|_| GitlabOauthClientError::MissingClientId)?;
+    let client_secret = std::env::var("CLIENT_SECRET").map_err(|_| GitlabOauthClientError::MissingClientSecret)?;
     let redirect_url = std::env::var("REDIRECT_URL")
         .unwrap_or_else(|_| "http://localhost:3030/auth/authorized".to_string());
 
@@ -57,18 +61,19 @@ pub fn oauth_client() -> Result<Oauth2Client, ()> {
     Ok(
         oauth2::basic::BasicClient::new(oauth2::ClientId::new(client_id))
             .set_client_secret(oauth2::ClientSecret::new(client_secret))
-            .set_auth_uri(oauth2::AuthUrl::new(auth_url).map_err(|e| ())?)
-            .set_token_uri(oauth2::TokenUrl::new(token_url).map_err(|e| ())?)
-            .set_redirect_uri(oauth2::RedirectUrl::new(redirect_url).map_err(|e| ())?),
+            .set_auth_uri(oauth2::AuthUrl::new(auth_url).map_err(|_e| GitlabOauthClientError::SetAuthUri)?)
+            .set_token_uri(oauth2::TokenUrl::new(token_url).map_err(|_e| GitlabOauthClientError::SetTokenUri)?)
+            .set_redirect_uri(oauth2::RedirectUrl::new(redirect_url).map_err(|_e| GitlabOauthClientError::SetRedirectUri)?),
     )
 }
 
 /// Setup the entire Axum Router to handle the api
-pub fn api_router(state: AxumState) -> axum::Router {
+pub fn api_router<S>(state: AxumState, session_store: S) -> axum::Router where S: tower_sessions::SessionStore + Clone {
     axum::Router::new()
         .route("/", axum::routing::get(landing_page))
         .merge(auth::auth_router())
         .merge(index::index_router(state.clone()))
+        .layer(tower_sessions::SessionManagerLayer::new(session_store).with_same_site(tower_sessions::cookie::SameSite::Lax).with_secure(true).with_http_only(true).with_path("/"))
         .with_state(state)
 }
 
